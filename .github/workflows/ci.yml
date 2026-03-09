@@ -2,9 +2,19 @@ name: CI Suite
 
 on:
   pull_request:
+    # Adding 'synchronize' ensures the workflow runs when you push new commits to an existing PR
+    types: [opened, synchronize, reopened]
     branches:
       - main
       - develop
+  # Optional: Trigger on manual dispatch for testing
+  workflow_dispatch:
+
+# Permissions are required for the GITHUB_TOKEN to create issues
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
 
 jobs:
   run-tests:
@@ -14,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Necessary to compare history between branches
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -38,7 +48,8 @@ jobs:
         id: version_check
         run: |
           echo "Checking module version..."
-
+          
+          # Locates the Odoo manifest file
           MODULE_MANIFEST=$(find . -name "__manifest__.py" | head -n 1)
 
           if [ -z "$MODULE_MANIFEST" ]; then
@@ -49,12 +60,13 @@ jobs:
 
           echo "Manifest found at $MODULE_MANIFEST"
 
-          # Use sed instead of grep -P to avoid lookbehind assertion errors
+          # Extract current version using sed
           CURRENT_VERSION=$(sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p" "$MODULE_MANIFEST")
 
+          # Fetch the base branch (main or develop) to compare
           git fetch origin ${{ github.base_ref }}
 
-          # Extract version from the base branch to compare
+          # Extract version from the base branch
           OLD_VERSION=$(git show origin/${{ github.base_ref }}:"$MODULE_MANIFEST" | \
           sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p")
 
@@ -86,11 +98,12 @@ jobs:
 
           check_field () {
             FIELD=$1
-            if ! grep -q "'$FIELD'" "$MANIFEST"; then
+            if ! grep -q "'$FIELD'" "$MANIFEST" && ! grep -q '"'$FIELD'"' "$MANIFEST"; then
               WARNINGS="$WARNINGS\n- Missing field: $FIELD"
             fi
           }
 
+          # Fields checked for Odoo standards
           check_field "license"
           check_field "description"
           check_field "author"
@@ -110,9 +123,11 @@ jobs:
 
       - name: Create Issue if Version Not Updated
         if: steps.version_check.outputs.version_error == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -X POST \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Authorization: Bearer $GH_TOKEN" \
           -H "Accept: application/vnd.github+json" \
           https://api.github.com/repos/${{ github.repository }}/issues \
           -d "{
@@ -123,9 +138,11 @@ jobs:
 
       - name: Create Issue for Manifest Warnings
         if: steps.manifest_check.outputs.manifest_warning == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -X POST \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Authorization: Bearer $GH_TOKEN" \
           -H "Accept: application/vnd.github+json" \
           https://api.github.com/repos/${{ github.repository }}/issues \
           -d "{
