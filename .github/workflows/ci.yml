@@ -9,9 +9,12 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -21,14 +24,110 @@ jobs:
       - name: Install Linting Tools
         run: |
           pip install flake8
-          
+
       - name: Lint with flake8
         run: |
-          # Stop the build if there are Python syntax errors
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
       - name: Odoo Module Check
         run: |
           echo "Simulating Odoo module installation and test run..."
-          # In a real scenario, you'd trigger your Odoo test commands here
           exit 0
+
+      - name: Check Odoo Module Version
+        id: version_check
+        run: |
+          echo "Checking module version..."
+
+          MODULE_MANIFEST=$(find . -name "__manifest__.py" | head -n 1)
+
+          if [ -z "$MODULE_MANIFEST" ]; then
+            echo "No __manifest__.py found!"
+            echo "version_error=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Manifest found at $MODULE_MANIFEST"
+
+          CURRENT_VERSION=$(grep -Po "(?<=['\"]version['\"]:\s*['\"]).*(?=['\"])" $MODULE_MANIFEST)
+
+          git fetch origin ${{ github.base_ref }}
+
+          OLD_VERSION=$(git show origin/${{ github.base_ref }}:$MODULE_MANIFEST | \
+          grep -Po "(?<=['\"]version['\"]:\s*['\"]).*(?=['\"])")
+
+          echo "Old version: $OLD_VERSION"
+          echo "New version: $CURRENT_VERSION"
+
+          if [ "$CURRENT_VERSION" = "$OLD_VERSION" ]; then
+            echo "Module version was not updated!"
+            echo "version_error=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version check passed"
+            echo "version_error=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Odoo Manifest Warnings
+        id: manifest_check
+        run: |
+          echo "Checking manifest warnings..."
+
+          MANIFEST=$(find . -name "__manifest__.py" | head -n 1)
+
+          if [ -z "$MANIFEST" ]; then
+            echo "manifest_warning=true" >> $GITHUB_OUTPUT
+            echo "WARNING_LIST=Manifest file missing" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          WARNINGS=""
+
+          check_field () {
+            FIELD=$1
+            if ! grep -q "'$FIELD'" $MANIFEST; then
+              WARNINGS="$WARNINGS\n- Missing field: $FIELD"
+            fi
+          }
+
+          check_field "license"
+          check_field "description"
+          check_field "author"
+          check_field "website"
+          check_field "depends"
+          check_field "data"
+
+          if [ -z "$WARNINGS" ]; then
+            echo "No manifest warnings found"
+            echo "manifest_warning=false" >> $GITHUB_OUTPUT
+          else
+            echo -e "Warnings detected:"
+            echo -e "$WARNINGS"
+            echo "manifest_warning=true" >> $GITHUB_OUTPUT
+            echo "WARNING_LIST=$WARNINGS" >> $GITHUB_ENV
+          fi
+
+      - name: Create Issue if Version Not Updated
+        if: steps.version_check.outputs.version_error == 'true'
+        run: |
+          curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/repos/${{ github.repository }}/issues \
+          -d "{
+            \"title\": \"Odoo Module Version Not Updated\",
+            \"body\": \"The module version in __manifest__.py was not incremented in this pull request.\n\nPR: #${{ github.event.pull_request.number }}\nAuthor: ${{ github.actor }}\n\nPlease update the version before merging.\",
+            \"labels\": [\"ci\",\"odoo\"]
+          }"
+
+      - name: Create Issue for Manifest Warnings
+        if: steps.manifest_check.outputs.manifest_warning == 'true'
+        run: |
+          curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/repos/${{ github.repository }}/issues \
+          -d "{
+            \"title\": \"Odoo Module Manifest Warnings\",
+            \"body\": \"The following manifest issues were detected:\n${{ env.WARNING_LIST }}\n\nPR: #${{ github.event.pull_request.number }}\nAuthor: ${{ github.actor }}\n\nPlease update __manifest__.py.\",
+            \"labels\": [\"ci\",\"odoo\",\"manifest\"]
+          }"
