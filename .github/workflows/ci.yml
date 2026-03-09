@@ -49,12 +49,14 @@ jobs:
 
           echo "Manifest found at $MODULE_MANIFEST"
 
-          CURRENT_VERSION=$(grep -Po "(?<=['\"]version['\"]:\s*['\"]).*(?=['\"])" $MODULE_MANIFEST)
+          # Use sed instead of grep -P to avoid lookbehind assertion errors
+          CURRENT_VERSION=$(sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p" "$MODULE_MANIFEST")
 
           git fetch origin ${{ github.base_ref }}
 
-          OLD_VERSION=$(git show origin/${{ github.base_ref }}:$MODULE_MANIFEST | \
-          grep -Po "(?<=['\"]version['\"]:\s*['\"]).*(?=['\"])")
+          # Extract version from the base branch to compare
+          OLD_VERSION=$(git show origin/${{ github.base_ref }}:"$MODULE_MANIFEST" | \
+          sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p")
 
           echo "Old version: $OLD_VERSION"
           echo "New version: $CURRENT_VERSION"
@@ -84,7 +86,7 @@ jobs:
 
           check_field () {
             FIELD=$1
-            if ! grep -q "'$FIELD'" $MANIFEST; then
+            if ! grep -q "'$FIELD'" "$MANIFEST"; then
               WARNINGS="$WARNINGS\n- Missing field: $FIELD"
             fi
           }
