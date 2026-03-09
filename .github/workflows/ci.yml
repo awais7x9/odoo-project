@@ -2,15 +2,13 @@ name: CI Suite
 
 on:
   pull_request:
-    # Adding 'synchronize' ensures the workflow runs when you push new commits to an existing PR
+    # 'synchronize' ensures the check runs every time you push new commits to the same branch
     types: [opened, synchronize, reopened]
     branches:
       - main
       - develop
-  # Optional: Trigger on manual dispatch for testing
   workflow_dispatch:
 
-# Permissions are required for the GITHUB_TOKEN to create issues
 permissions:
   contents: read
   issues: write
@@ -24,7 +22,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Necessary to compare history between branches
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -48,8 +46,6 @@ jobs:
         id: version_check
         run: |
           echo "Checking module version..."
-          
-          # Locates the Odoo manifest file
           MODULE_MANIFEST=$(find . -name "__manifest__.py" | head -n 1)
 
           if [ -z "$MODULE_MANIFEST" ]; then
@@ -58,26 +54,16 @@ jobs:
             exit 0
           fi
 
-          echo "Manifest found at $MODULE_MANIFEST"
-
-          # Extract current version using sed
+          # Extract version using sed
           CURRENT_VERSION=$(sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p" "$MODULE_MANIFEST")
-
-          # Fetch the base branch (main or develop) to compare
+          
           git fetch origin ${{ github.base_ref }}
-
-          # Extract version from the base branch
           OLD_VERSION=$(git show origin/${{ github.base_ref }}:"$MODULE_MANIFEST" | \
           sed -n "s/.*['\"]version['\"]:[[:space:]]*['\"]\(.*\)['\"].*/\1/p")
 
-          echo "Old version: $OLD_VERSION"
-          echo "New version: $CURRENT_VERSION"
-
           if [ "$CURRENT_VERSION" = "$OLD_VERSION" ]; then
-            echo "Module version was not updated!"
             echo "version_error=true" >> $GITHUB_OUTPUT
           else
-            echo "Version check passed"
             echo "version_error=false" >> $GITHUB_OUTPUT
           fi
 
@@ -85,7 +71,6 @@ jobs:
         id: manifest_check
         run: |
           echo "Checking manifest warnings..."
-
           MANIFEST=$(find . -name "__manifest__.py" | head -n 1)
 
           if [ -z "$MANIFEST" ]; then
@@ -96,14 +81,16 @@ jobs:
 
           WARNINGS=""
 
+          # Improved check_field function
+          # Logic: looks for the field name surrounded by either ' or " followed by optional whitespace and a colon
           check_field () {
             FIELD=$1
-            if ! grep -q "'$FIELD'" "$MANIFEST" && ! grep -q '"'$FIELD'"' "$MANIFEST"; then
+            if ! grep -qE "['\"]$FIELD['\"][[:space:]]*:" "$MANIFEST"; then
               WARNINGS="$WARNINGS\n- Missing field: $FIELD"
             fi
           }
 
-          # Fields checked for Odoo standards
+          # List of fields to validate
           check_field "license"
           check_field "description"
           check_field "author"
@@ -112,13 +99,15 @@ jobs:
           check_field "data"
 
           if [ -z "$WARNINGS" ]; then
-            echo "No manifest warnings found"
             echo "manifest_warning=false" >> $GITHUB_OUTPUT
           else
-            echo -e "Warnings detected:"
-            echo -e "$WARNINGS"
             echo "manifest_warning=true" >> $GITHUB_OUTPUT
-            echo "WARNING_LIST=$WARNINGS" >> $GITHUB_ENV
+            # Use multi-line environment variable syntax for GitHub Actions
+            {
+              echo "WARNING_LIST<<EOF"
+              echo -e "$WARNINGS"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
           fi
 
       - name: Create Issue if Version Not Updated
@@ -132,7 +121,7 @@ jobs:
           https://api.github.com/repos/${{ github.repository }}/issues \
           -d "{
             \"title\": \"Odoo Module Version Not Updated\",
-            \"body\": \"The module version in __manifest__.py was not incremented in this pull request.\n\nPR: #${{ github.event.pull_request.number }}\nAuthor: ${{ github.actor }}\n\nPlease update the version before merging.\",
+            \"body\": \"The module version in __manifest__.py was not incremented.\n\nPR: #${{ github.event.pull_request.number }}\",
             \"labels\": [\"ci\",\"odoo\"]
           }"
 
@@ -147,6 +136,6 @@ jobs:
           https://api.github.com/repos/${{ github.repository }}/issues \
           -d "{
             \"title\": \"Odoo Module Manifest Warnings\",
-            \"body\": \"The following manifest issues were detected:\n${{ env.WARNING_LIST }}\n\nPR: #${{ github.event.pull_request.number }}\nAuthor: ${{ github.actor }}\n\nPlease update __manifest__.py.\",
+            \"body\": \"The following manifest issues were detected:\n${{ env.WARNING_LIST }}\n\nPR: #${{ github.event.pull_request.number }}\",
             \"labels\": [\"ci\",\"odoo\",\"manifest\"]
           }"
