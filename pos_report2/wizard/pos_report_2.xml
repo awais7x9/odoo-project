@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_report2_wizard_id" model="ir.ui.view">
+        <field name="name">pos.report2.form</field>
+        <field name="model">pos.report2.wizard</field>
+        <field name="arch" type="xml">
+            <form string="">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="from_date"/>
+                            <field name="company_id" options="{'no_create': True,'no_create_edit': True}"/>
+                        </group>
+                        <group>
+                            <field name="to_date"/>
+                            <field name="branch_ids" widget="many2many_tags"
+                                   options="{'no_create': True,'no_create_edit': True}"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button name="print_report_2" string="Excel Report"
+                                class="btn btn-small btn-grey oe_highlight" type="object"/>
+                        <button string="Cancel" class="btn btn-default" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="pos_report2_action" model="ir.actions.act_window">
+        <field name="name">Sales Closing Report</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pos.report2.wizard</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="pos_report2_wizard_id"/>
+        <field name="target">new</field>
+    </record>
+    <menuitem id="menu_report_pos_report_2"
+              name="Sales Closing Report"
+              parent="point_of_sale.menu_point_rep"
+              sequence="5"
+              action="pos_report2_action"
+              groups="account.group_account_user"
+    />
+</odoo>
