@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_report_wizard_id3" model="ir.ui.view">
+        <field name="name">pos.report3.form</field>
+        <field name="model">pos.report3.wizard</field>
+        <field name="arch" type="xml">
+            <form string="">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="from_date"/>
+                            <field name="company_id" options="{'no_create': True,'no_create_edit': True}"/>
+                        </group>
+                        <group>
+                            <field name="to_date"/>
+                            <field name="branch_id" widget="many2many_tags"
+                                   options="{'no_create': True,'no_create_edit': True}"/>
+                        </group>
+                        <group>
+                            <field name="return_ref"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button name="print_report_1" string="Excel Report"
+                                class="btn btn-small btn-grey oe_highlight" type="object"/>
+                        <button string="Cancel" class="btn btn-default" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="pos_report3_action" model="ir.actions.act_window">
+        <field name="name">Sales Return Report</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pos.report3.wizard</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="pos_report_wizard_id3"/>
+        <field name="target">new</field>
+    </record>
+    <menuitem id="menu_report_pos_report_3"
+              name="Sales Return Report"
+              parent="point_of_sale.menu_point_rep"
+              sequence="6"
+              action="pos_report3_action"
+              groups="account.group_account_user"
+    />
+</odoo>
