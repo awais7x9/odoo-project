@@ -81,8 +81,13 @@ jobs:
 
           WARNINGS=""
 
-          # Improved check_field function
-          # Logic: looks for the field name surrounded by either ' or " followed by optional whitespace and a colon
+          # 1. Specific Check for the License Key and Value
+          # This looks for 'license': 'Other proprietary' (handling quotes and spaces)
+          if ! grep -qE "['\"]license['\"][[:space:]]*:[[:space:]]*['\"]Other proprietary['\"]" "$MANIFEST"; then
+            WARNINGS="$WARNINGS\n- Missing or incorrect license: must be 'license': 'Other proprietary'"
+          fi
+
+          # 2. General check function for other mandatory fields
           check_field () {
             FIELD=$1
             if ! grep -qE "['\"]$FIELD['\"][[:space:]]*:" "$MANIFEST"; then
@@ -90,19 +95,21 @@ jobs:
             fi
           }
 
-          # List of fields to validate
-          check_field "license"
+          # Validate remaining fields
           check_field "description"
           check_field "author"
           check_field "website"
           check_field "depends"
           check_field "data"
 
+          # Handle the output
           if [ -z "$WARNINGS" ]; then
+            echo "No manifest warnings found"
             echo "manifest_warning=false" >> $GITHUB_OUTPUT
           else
+            echo -e "Warnings detected:$WARNINGS"
             echo "manifest_warning=true" >> $GITHUB_OUTPUT
-            # Use multi-line environment variable syntax for GitHub Actions
+            # Use multi-line syntax for GITHUB_ENV
             {
               echo "WARNING_LIST<<EOF"
               echo -e "$WARNINGS"
